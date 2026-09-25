@@ -1,0 +1,25 @@
+local player = game.Players.LocalPlayer
+
+-- 캐릭터가 바뀔 때마다 실행
+player.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    
+    -- 매 순간 체력을 풀피(MaxHealth)로 유지
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if humanoid and humanoid.Health > 0 then
+            humanoid.Health = humanoid.MaxHealth
+        end
+    end)
+end)
+
+-- 현재 캐릭터에도 즉시 적용
+if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if humanoid and humanoid.Health > 0 then
+            humanoid.Health = humanoid.MaxHealth
+        end
+    end)
+end
+
+print("체력 유지 스크립트 로드 완료!")
