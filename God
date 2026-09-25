@@ -1,30 +1,103 @@
-local player = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+local runService = game:GetService("RunService")
 
--- 캐릭터가 생성될 때마다 실행
-player.CharacterAdded:Connect(function(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    
-    -- Humanoid의 체력이 변하는 순간을 감지
-    humanoid.HealthChanged:Connect(function(newHealth)
-        -- 만약 체력이 이전보다 깎였다면 (데미지를 입었다면)
-        if newHealth < humanoid.Health then
-            local diff = humanoid.Health - newHealth -- 입은 데미지 양 계산
-            
-            -- 체력이 깎이는 걸 막고 오히려 그만큼 체력을 채워줌! (힐로 반전)
-            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + (diff * 2))
+-- 명령어 상태 변수
+local targetPlayer = nil
+local originalPosition = nil
+local tpLoop = nil
+local isTracking = false
+
+-- 플레이어 검색 함수 (닉네임 일부만 쳐도 찾아짐)
+local function findPlayer(nameInput)
+    nameInput = string.lower(nameInput)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer then
+            if string.lower(p.Name):sub(1, #nameInput) == nameInput or string.lower(p.DisplayName):sub(1, #nameInput) == nameInput then
+                return p
+            end
         end
-    end)
-end)
+    end
+    return nil
+end
 
--- 현재 캐릭터에도 즉시 적용
-if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    humanoid.HealthChanged:Connect(function(newHealth)
-        if newHealth < humanoid.Health then
-            local diff = humanoid.Health - newHealth
-            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + (diff * 2))
+-- 채팅 명령어 감지 시스템
+local function setupChatCommand(player)
+    player.Chatted:Connect(function(message)
+        local args = {}
+        for word in message:gmatch("%S+") do
+            table.insert(args, word)
+        end
+        
+        local cmd = string.lower(args[1] or "")
+        
+        -- [1] 지정한 사람에게 계속 TP하기 명령어: ;follow [닉네임]
+        if cmd == ";follow" or cmd == ";tp" then
+            local query = args[2]
+            if query then
+                local found = findPlayer(query)
+                if found then
+                    targetPlayer = found
+                    local char = localPlayer.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        -- TP를 시작하기 전의 원래 위치 저장!
+                        originalPosition = char.HumanoidRootPart.CFrame
+                    end
+                    
+                    isTracking = true
+                    print("[명령어] " .. targetPlayer.Name .. " 님을 추적(무한 TP) 시작합니다!")
+                else
+                    print("[명령어] 해당 플레이어를 찾을 수 없습니다.")
+                end
+            end
+            
+        -- [2] 추적 멈추기 명령어: ;unfollow (또는 ;untp)
+        elseif cmd == ";unfollow" or cmd == ";untp" then
+            isTracking = false
+            targetPlayer = nil
+            print("[명령어] 추적을 중지했습니다.")
         end
     end)
 end
 
-print("데미지 힐 반전 스크립트 로드 완료!")
+setupChatCommand(localPlayer)
+
+-- [3] 매 프레임마다 타겟 따라가기 + 죽었을 때 원래 자리 복귀 감지
+local lastHealth = 100
+
+runService.RenderStepped:Connect(function()
+    local char = localPlayer.Character
+    if not char then return end
+    
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    
+    if humanoid and rootPart then
+        -- [핵심] 캐릭터가 죽었거나 체력이 0이 되었을 때 체크
+        if humanoid.Health <= 0 then
+            if isTracking and originalPosition then
+                isTracking = false -- 죽었으니 추적 해제
+                targetPlayer = nil
+                
+                -- 리스폰될 때까지 잠깐 기다렸다가 원래 자리로 순간이동
+                task.spawn(function()
+                    local newChar = localPlayer.CharacterAdded:Wait()
+                    local newRoot = newChar:WaitForChild("HumanoidRootPart")
+                    task.wait(0.5) -- 완전히 로드될 때까지 대기
+                    newRoot.CFrame = originalPosition
+                    print("[시스템] 사망 감지! TP하기 전 원래 위치로 복귀했습니다.")
+                    originalPosition = nil
+                end)
+            end
+        end
+        
+        -- [핵심] 타겟을 계속해서 따라가는(TP) 로직
+        if isTracking and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetRoot = targetPlayer.Character.HumanoidRootPart
+            -- 타겟의 바로 뒤쪽이나 살짝 위에 위치 고정 (파고들지 않게 살짝 위로 설정)
+            rootPart.CFrame = targetRoot.CFrame + Vector3.new(0, 3, 0)
+        end
+    end
+end)
+
+print("무한 TP & 복귀 명령어 스크립트 로드 완료! (사용법 채팅창에: ;follow [닉네임] 또는 ;unfollow)")
