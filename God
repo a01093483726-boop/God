@@ -1,13 +1,17 @@
 local player = game.Players.LocalPlayer
 
--- 캐릭터가 바뀔 때마다 실행
+-- 캐릭터가 생성될 때마다 실행
 player.CharacterAdded:Connect(function(character)
     local humanoid = character:WaitForChild("Humanoid")
     
-    -- 매 순간 체력을 풀피(MaxHealth)로 유지
-    game:GetService("RunService").RenderStepped:Connect(function()
-        if humanoid and humanoid.Health > 0 then
-            humanoid.Health = humanoid.MaxHealth
+    -- Humanoid의 체력이 변하는 순간을 감지
+    humanoid.HealthChanged:Connect(function(newHealth)
+        -- 만약 체력이 이전보다 깎였다면 (데미지를 입었다면)
+        if newHealth < humanoid.Health then
+            local diff = humanoid.Health - newHealth -- 입은 데미지 양 계산
+            
+            -- 체력이 깎이는 걸 막고 오히려 그만큼 체력을 채워줌! (힐로 반전)
+            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + (diff * 2))
         end
     end)
 end)
@@ -15,11 +19,12 @@ end)
 -- 현재 캐릭터에도 즉시 적용
 if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
     local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    game:GetService("RunService").RenderStepped:Connect(function()
-        if humanoid and humanoid.Health > 0 then
-            humanoid.Health = humanoid.MaxHealth
+    humanoid.HealthChanged:Connect(function(newHealth)
+        if newHealth < humanoid.Health then
+            local diff = humanoid.Health - newHealth
+            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + (diff * 2))
         end
     end)
 end
 
-print("체력 유지 스크립트 로드 완료!")
+print("데미지 힐 반전 스크립트 로드 완료!")
